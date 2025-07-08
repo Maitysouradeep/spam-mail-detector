@@ -1,60 +1,163 @@
+# Final-Year Project: Spam Mail Detection Web App
+# Developed by: Souradeep Maity
+
 import streamlit as st
 import pandas as pd
 import numpy as np
+import sqlite3
+import hashlib
+import time
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
+from datetime import datetime
 
+# ----------------------------- DATABASE SETUP -----------------------------
+conn = sqlite3.connect("user_data.db", check_same_thread=False)
+c = conn.cursor()
+
+c.execute('''CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password TEXT
+)''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS history (
+    username TEXT,
+    message TEXT,
+    prediction TEXT,
+    confidence REAL,
+    timestamp TEXT
+)''')
+conn.commit()
+
+# ----------------------------- AUTH UTILS -----------------------------
+def make_hashes(password):
+    return hashlib.sha256(str.encode(password)).hexdigest()
+
+def check_hashes(password, hashed):
+    return make_hashes(password) == hashed
+
+def add_user(username, password):
+    c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, make_hashes(password)))
+    conn.commit()
+
+def login_user(username, password):
+    c.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, make_hashes(password)))
+    return c.fetchone()
+
+# ----------------------------- STREAMLIT UI -----------------------------
 st.set_page_config(page_title="Spam Mail Detector", page_icon="📧")
 st.title("📧 Spam Mail Detection System")
+st.markdown("Detect whether an email is **Spam** or **Ham** using a Machine Learning model.")
 
-st.markdown("This app detects whether an email is spam or not using Machine Learning.")
+# ----------------------------- LOAD + TRAIN MODEL -----------------------------
+@st.cache_resource
+def load_model():
+    data = pd.read_csv("mail_data.csv")
+    data = data.where(pd.notnull(data), '')
+    data.loc[data['Category'] == 'spam', 'Category'] = 0
+    data.loc[data['Category'] == 'ham', 'Category'] = 1
+    X = data['Message']
+    Y = data['Category'].astype(int)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=3)
+    vectorizer = TfidfVectorizer(min_df=1, stop_words='english', lowercase=True)
+    X_train_features = vectorizer.fit_transform(X_train)
+    X_test_features = vectorizer.transform(X_test)
+    model = LogisticRegression()
+    model.fit(X_train_features, Y_train)
+    acc_train = accuracy_score(Y_train, model.predict(X_train_features))
+    acc_test = accuracy_score(Y_test, model.predict(X_test_features))
+    return model, vectorizer, acc_train, acc_test
 
-# Load CSV with error handling
-try:
-    mail_data = pd.read_csv("mail_data.csv")
-    mail_data = mail_data.where(pd.notnull(mail_data), '')
-    mail_data.loc[mail_data['Category'] == 'spam', 'Category'] = 0
-    mail_data.loc[mail_data['Category'] == 'ham', 'Category'] = 1
-    mail_data['Category'] = mail_data['Category'].astype(int)
-    st.success("✅ Dataset loaded successfully!")
-except Exception as e:
-    st.error("❌ Failed to load mail_data.csv file.")
-    st.exception(e)
-    st.stop()
+model, vectorizer, acc_train, acc_test = load_model()
 
-# Model pipeline
-X = mail_data['Message']
-Y = mail_data['Category']
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=3)
+# ----------------------------- SIDEBAR -----------------------------
+st.sidebar.subheader("🔐 Optional Login")
+menu = ["Home", "Login", "Register"]
+choice = st.sidebar.selectbox("Navigation", menu)
 
-vectorizer = TfidfVectorizer(min_df=1, stop_words='english', lowercase=True)
-X_train_features = vectorizer.fit_transform(X_train)
-X_test_features = vectorizer.transform(X_test)
+if 'user' not in st.session_state:
+    st.session_state.user = None
 
-model = LogisticRegression()
-model.fit(X_train_features, Y_train)
+if choice == "Register":
+    st.sidebar.write("Create a new account")
+    new_user = st.sidebar.text_input("Username")
+    new_password = st.sidebar.text_input("Password", type='password')
+    if st.sidebar.button("Register"):
+        add_user(new_user, new_password)
+        st.sidebar.success("User registered. You can login now.")
 
-# App UI
-st.header("📬 Test a New Email")
-input_text = st.text_area("Enter email message:")
+elif choice == "Login":
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type='password')
+    if st.sidebar.button("Login"):
+        result = login_user(username, password)
+        if result:
+            st.session_state.user = username
+            st.sidebar.success(f"Logged in as {username}")
+        else:
+            st.sidebar.error("Incorrect username/password")
+
+# ----------------------------- MAIN APP -----------------------------
+st.markdown(f"### Model Accuracy")
+st.markdown(f"✅ Training Accuracy: `{acc_train*100:.2f}%`")
+st.markdown(f"✅ Testing Accuracy: `{acc_test*100:.2f}%`")
+
+st.markdown("---")
+st.subheader("📥 Enter a New Email")
+input_text = st.text_area("Type or paste an email message:")
 
 if st.button("Detect"):
     if input_text.strip() == "":
-        st.warning("Please enter an email message.")
+        st.warning("Please enter a message to check.")
     else:
-        input_data = vectorizer.transform([input_text])
-        prediction = model.predict(input_data)[0]
-        probability = model.predict_proba(input_data)[0]
+        features = vectorizer.transform([input_text])
+        pred = model.predict(features)[0]
+        prob = model.predict_proba(features)[0]
+        label = "Ham" if pred == 1 else "Spam"
+        color = "green" if label == "Ham" else "red"
+        confidence = np.max(prob) * 100
 
-        if prediction == 1:
-            st.success("✅ This is a **Ham** email.")
-        else:
-            st.error("🚫 This is a **Spam** email.")
+        st.markdown(f"### 📊 Result: <span style='color:{color}; font-size:24px'><b>{label}</b></span>", unsafe_allow_html=True)
+        st.markdown(f"Confidence: `{confidence:.2f}%`")
 
-        st.info(f"Confidence: {np.max(probability) * 100:.2f}%")
+        # Save if logged in
+        if st.session_state.user:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute('INSERT INTO history (username, message, prediction, confidence, timestamp) VALUES (?, ?, ?, ?, ?)',
+                      (st.session_state.user, input_text, label, float(confidence), now))
+            conn.commit()
 
+# ----------------------------- BULK PREDICTION -----------------------------
 st.markdown("---")
-st.caption("Project by Souradeep Maity · Final Year B.Tech")
+st.subheader("📤 Bulk Email Upload (CSV)")
+uploaded_file = st.file_uploader("Upload CSV file with a 'Message' column", type=["csv"])
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    if 'Message' in df.columns:
+        features = vectorizer.transform(df['Message'])
+        df['Prediction'] = model.predict(features)
+        df['Prediction'] = df['Prediction'].apply(lambda x: "Ham" if x == 1 else "Spam")
+        st.write(df[['Message', 'Prediction']])
+        st.download_button("Download Results as CSV", df.to_csv(index=False).encode(), file_name="predictions.csv")
+    else:
+        st.error("The uploaded file must have a 'Message' column")
+
+# ----------------------------- VIEW HISTORY -----------------------------
+if st.session_state.user:
+    st.markdown("---")
+    st.subheader("📁 Your Prediction History")
+    c.execute('SELECT message, prediction, confidence, timestamp FROM history WHERE username = ?', (st.session_state.user,))
+    data = c.fetchall()
+    if data:
+        hist_df = pd.DataFrame(data, columns=["Message", "Prediction", "Confidence", "Time"])
+        st.dataframe(hist_df)
+    else:
+        st.info("No history yet.")
+
+# ----------------------------- FOOTER -----------------------------
+st.markdown("---")
+st.caption("Developed by Souradeep Maity · Final Year Project · 2025")
+
 
