@@ -79,6 +79,13 @@ choice = st.sidebar.selectbox("Navigation", menu)
 
 if 'user' not in st.session_state:
     st.session_state.user = None
+    # Show logout if user is logged in
+if st.session_state.user:
+    st.sidebar.success(f"Logged in as {st.session_state.user}")
+    if st.sidebar.button("Logout"):
+        st.session_state.user = None
+        st.experimental_rerun()
+
 
 if choice == "Register":
     st.sidebar.write("Create a new account")
@@ -148,11 +155,25 @@ if uploaded_file:
 if st.session_state.user:
     st.markdown("---")
     st.subheader("📁 Your Prediction History")
-    c.execute('SELECT message, prediction, confidence, timestamp FROM history WHERE username = ?', (st.session_state.user,))
+    c.execute('SELECT rowid, message, prediction, confidence, timestamp FROM history WHERE username = ?', (st.session_state.user,))
     data = c.fetchall()
     if data:
-        hist_df = pd.DataFrame(data, columns=["Message", "Prediction", "Confidence", "Time"])
+        hist_df = pd.DataFrame(data, columns=["ID", "Message", "Prediction", "Confidence", "Time"])
         st.dataframe(hist_df)
+
+        delete_col1, delete_col2 = st.columns([1, 2])
+        with delete_col1:
+            delete_id = st.text_input("Enter ID to delete a specific entry:")
+            if st.button("Delete Entry") and delete_id.strip().isdigit():
+                c.execute('DELETE FROM history WHERE rowid = ? AND username = ?', (int(delete_id.strip()), st.session_state.user))
+                conn.commit()
+                st.success("Entry deleted. Refresh to see update.")
+
+        with delete_col2:
+            if st.button("🗑 Delete All History"):
+                c.execute('DELETE FROM history WHERE username = ?', (st.session_state.user,))
+                conn.commit()
+                st.success("All history deleted.")
     else:
         st.info("No history yet.")
 
