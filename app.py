@@ -19,7 +19,6 @@ try:
     mail_data.loc[mail_data['Category'] == 'ham', 'Category'] = 1
     mail_data['Category'] = mail_data['Category'].astype(int)
     st.success("✅ Dataset loaded successfully!")
-    st.write(mail_data.head())
 except Exception as e:
     st.error("❌ Failed to load mail_data.csv file.")
     st.exception(e)
