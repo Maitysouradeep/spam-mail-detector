@@ -43,8 +43,12 @@ def add_user(username, password):
     conn.commit()
 
 def login_user(username, password):
-    c.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, make_hashes(password)))
-    return c.fetchone()
+    c.execute('SELECT * FROM users WHERE username = ?', (username,))
+    user = c.fetchone()
+    if user and check_hashes(password, user[1]):
+        return user
+    return None
+
 
 # ----------------------------- STREAMLIT UI -----------------------------
 st.set_page_config(page_title="Spam Mail Detector", page_icon="📧")
