@@ -155,8 +155,13 @@ if uploaded_file:
 if st.session_state.user:
     st.markdown("---")
     st.subheader("📁 Your Prediction History")
-    c.execute('SELECT rowid, message, prediction, confidence, timestamp FROM history WHERE username = ?', (st.session_state.user,))
+    if 'deleted' not in st.session_state:
+        st.session_state.deleted = False
+
+    delete_success = False
+    c.execute('SELECT id, message, prediction, confidence, timestamp FROM history WHERE username = ?', (st.session_state.user,))
     data = c.fetchall()
+
     if data:
         hist_df = pd.DataFrame(data, columns=["ID", "Message", "Prediction", "Confidence", "Time"])
         st.dataframe(hist_df)
@@ -165,15 +170,17 @@ if st.session_state.user:
         with delete_col1:
             delete_id = st.text_input("Enter ID to delete a specific entry:")
             if st.button("Delete Entry") and delete_id.strip().isdigit():
-                c.execute('DELETE FROM history WHERE rowid = ? AND username = ?', (int(delete_id.strip()), st.session_state.user))
+                c.execute('DELETE FROM history WHERE id = ? AND username = ?', (int(delete_id.strip()), st.session_state.user))
                 conn.commit()
-                st.success("Entry deleted. Refresh to see update.")
+                st.session_state.deleted = True
+                st.experimental_rerun()
 
         with delete_col2:
             if st.button("🗑 Delete All History"):
                 c.execute('DELETE FROM history WHERE username = ?', (st.session_state.user,))
                 conn.commit()
-                st.success("All history deleted.")
+                st.session_state.deleted = True
+                st.experimental_rerun()
     else:
         st.info("No history yet.")
 
