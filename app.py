@@ -197,7 +197,7 @@ if st.session_state.user:
                 c.execute('DELETE FROM history WHERE username = ?', (st.session_state.user,))
                 conn.commit()
                 st.session_state.deleted = True
-                st.experimental_rerun()
+                st.rerun()
     else:
         st.info("No history yet.")
 
