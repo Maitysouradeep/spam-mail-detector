@@ -16,6 +16,19 @@ from datetime import datetime
 # ----------------------------- DATABASE SETUP -----------------------------
 conn = sqlite3.connect("user_data.db", check_same_thread=False)
 c = conn.cursor()
+# Create history table if it doesn't exist
+c.execute('''
+    CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        message TEXT,
+        prediction TEXT,
+        confidence REAL,
+        timestamp TEXT
+    )
+''')
+conn.commit()
+
 
 c.execute('''CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
