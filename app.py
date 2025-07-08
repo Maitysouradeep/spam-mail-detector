@@ -55,8 +55,8 @@ def login_user(username, password):
     return None
 
 # ----------------------------- STREAMLIT UI -----------------------------
-st.set_page_config(page_title="Spam Mail Detector", page_icon="\ud83d\udce7")
-st.title("\ud83d\udce7 Spam Mail Detection System")
+st.set_page_config(page_title="Spam Mail Detector")
+st.title("\ud83d\udce7 Spam Mail Detection")
 st.markdown("Detect whether an email is **Spam** or **Ham** using a Machine Learning model.")
 
 # ----------------------------- LOAD + TRAIN MODEL -----------------------------
