@@ -17,23 +17,19 @@ from datetime import datetime
 conn = sqlite3.connect("user_data.db", check_same_thread=False)
 c = conn.cursor()
 
-# Create users table
 c.execute('''CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT
 )''')
 
-# Create history table
-c.execute('''
-    CREATE TABLE IF NOT EXISTS history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
-        message TEXT,
-        prediction TEXT,
-        confidence REAL,
-        timestamp TEXT
-    )
-''')
+c.execute('''CREATE TABLE IF NOT EXISTS history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    message TEXT,
+    prediction TEXT,
+    confidence REAL,
+    timestamp TEXT
+)''')
 conn.commit()
 
 # ----------------------------- AUTH UTILS -----------------------------
@@ -48,15 +44,12 @@ def add_user(username, password):
     conn.commit()
 
 def login_user(username, password):
-    c.execute('SELECT * FROM users WHERE username = ?', (username,))
-    user = c.fetchone()
-    if user and check_hashes(password, user[1]):
-        return user
-    return None
+    c.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, make_hashes(password)))
+    return c.fetchone()
 
 # ----------------------------- STREAMLIT UI -----------------------------
-st.set_page_config(page_title="Spam Mail Detector")
-st.title("\ud83d\udce7 Spam Mail Detection")
+st.set_page_config(page_title="Spam Mail Detector", page_icon="📧")
+st.title("📧 Spam Mail Detection System")
 st.markdown("Detect whether an email is **Spam** or **Ham** using a Machine Learning model.")
 
 # ----------------------------- LOAD + TRAIN MODEL -----------------------------
@@ -81,7 +74,7 @@ def load_model():
 model, vectorizer, acc_train, acc_test = load_model()
 
 # ----------------------------- SIDEBAR -----------------------------
-st.sidebar.subheader("\ud83d\udd10 Optional Login")
+st.sidebar.subheader("🔐 Optional Login")
 menu = ["Home", "Login", "Register"]
 choice = st.sidebar.selectbox("Navigation", menu)
 
@@ -91,8 +84,8 @@ if 'user' not in st.session_state:
 if st.session_state.user:
     st.sidebar.success(f"Logged in as {st.session_state.user}")
     if st.sidebar.button("Logout"):
-        st.session_state.clear()
-        st.rerun()
+        st.session_state.user = None
+        st.experimental_rerun()
 
 if choice == "Register":
     st.sidebar.write("Create a new account")
@@ -109,17 +102,17 @@ elif choice == "Login":
         result = login_user(username, password)
         if result:
             st.session_state.user = username
-            st.sidebar.success(f"Logged in as {username}")
+            st.experimental_rerun()
         else:
             st.sidebar.error("Incorrect username/password")
 
 # ----------------------------- MAIN APP -----------------------------
 st.markdown(f"### Model Accuracy")
-st.markdown(f"\u2705 Training Accuracy: `{acc_train*100:.2f}%`")
-st.markdown(f"\u2705 Testing Accuracy: `{acc_test*100:.2f}%`")
+st.markdown(f"✅ Training Accuracy: `{acc_train*100:.2f}%`")
+st.markdown(f"✅ Testing Accuracy: `{acc_test*100:.2f}%`")
 
 st.markdown("---")
-st.subheader("\ud83d\udcc5 Enter a New Email")
+st.subheader("📥 Enter a New Email")
 input_text = st.text_area("Type or paste an email message:")
 
 if st.button("Detect"):
@@ -133,9 +126,10 @@ if st.button("Detect"):
         color = "green" if label == "Ham" else "red"
         confidence = np.max(prob) * 100
 
-        st.markdown(f"### \ud83d\udcca Result: <span style='color:{color}; font-size:24px'><b>{label}</b></span>", unsafe_allow_html=True)
+        st.markdown(f"### 📊 Result: <span style='color:{color}; font-size:24px'><b>{label}</b></span>", unsafe_allow_html=True)
         st.markdown(f"Confidence: `{confidence:.2f}%`")
 
+        # Save if logged in
         if st.session_state.user:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             c.execute('INSERT INTO history (username, message, prediction, confidence, timestamp) VALUES (?, ?, ?, ?, ?)',
@@ -144,7 +138,7 @@ if st.button("Detect"):
 
 # ----------------------------- BULK PREDICTION -----------------------------
 st.markdown("---")
-st.subheader("\ud83d\udcc4 Bulk Email Upload (CSV)")
+st.subheader("📤 Bulk Email Upload (CSV)")
 uploaded_file = st.file_uploader("Upload CSV file with a 'Message' column", type=["csv"])
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
@@ -160,7 +154,11 @@ if uploaded_file:
 # ----------------------------- VIEW HISTORY -----------------------------
 if st.session_state.user:
     st.markdown("---")
-    st.subheader("\ud83d\udcc1 Your Prediction History")
+    st.subheader("📁 Your Prediction History")
+    if 'deleted' not in st.session_state:
+        st.session_state.deleted = False
+
+    delete_success = False
     c.execute('SELECT id, message, prediction, confidence, timestamp FROM history WHERE username = ?', (st.session_state.user,))
     data = c.fetchall()
 
@@ -174,19 +172,22 @@ if st.session_state.user:
             if st.button("Delete Entry") and delete_id.strip().isdigit():
                 c.execute('DELETE FROM history WHERE id = ? AND username = ?', (int(delete_id.strip()), st.session_state.user))
                 conn.commit()
-                st.rerun()
+                st.session_state.deleted = True
+                st.experimental_rerun()
 
         with delete_col2:
-            if st.button("\ud83d\uddd1 Delete All History"):
+            if st.button("🗑 Delete All History"):
                 c.execute('DELETE FROM history WHERE username = ?', (st.session_state.user,))
                 conn.commit()
-                st.rerun()
+                st.session_state.deleted = True
+                st.experimental_rerun()
     else:
         st.info("No history yet.")
 
 # ----------------------------- FOOTER -----------------------------
 st.markdown("---")
 st.caption("Developed by Souradeep Maity")
+
 
 
 
